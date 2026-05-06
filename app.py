@@ -32,6 +32,8 @@ COLORS = {
     "grid": "#E5E7EB",
 }
 SITE_COLORS = ["#5B8DEF", "#58B99D", "#9B7FEA", "#6CCBD1", "#C7B8F5"]
+INVENTORY_WEIGHT_VALUES = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+DEFAULT_INVENTORY_WEIGHT = 2
 
 
 st.set_page_config(
@@ -177,22 +179,60 @@ st.markdown(
         border-color: var(--app-blue-600);
     }
 
+    [data-testid="stFileUploader"] section button p,
+    [data-testid="stFileUploader"] section button span,
+    [data-testid="stFileUploader"] section button svg {
+        color: white;
+        fill: white;
+    }
+
     [data-testid="stFileUploader"] small,
     [data-testid="stFileUploader"] span {
         color: var(--app-blue-700);
     }
 
-    [data-testid="stSegmentedControl"] label {
+    [data-testid="stSegmentedControl"] label,
+    [data-testid="stSegmentedControl"] label div,
+    [data-testid="stSegmentedControl"] label p {
         background: white;
         border-color: var(--app-border);
         color: var(--app-blue-900);
     }
 
     [data-testid="stSegmentedControl"] label[aria-checked="true"],
-    [data-testid="stSegmentedControl"] label:has(input:checked) {
+    [data-testid="stSegmentedControl"] label[aria-checked="true"] div,
+    [data-testid="stSegmentedControl"] label[aria-checked="true"] p,
+    [data-testid="stSegmentedControl"] label:has(input:checked),
+    [data-testid="stSegmentedControl"] label:has(input:checked) div,
+    [data-testid="stSegmentedControl"] label:has(input:checked) p {
         background: var(--app-blue-100);
         border-color: var(--app-blue-600);
         color: var(--app-blue-900);
+    }
+
+    [data-testid="stNumberInput"] div[data-baseweb="input"],
+    [data-testid="stNumberInput"] div[data-baseweb="base-input"] {
+        background: white;
+        border-color: var(--app-border);
+        color: var(--app-blue-900);
+    }
+
+    [data-testid="stNumberInput"] button {
+        background: var(--app-blue-50);
+        border-color: var(--app-border);
+        color: var(--app-blue-700);
+    }
+
+    [data-testid="stNumberInput"] button:hover {
+        background: var(--app-blue-100);
+        color: var(--app-blue-900);
+    }
+
+    [data-testid="stNumberInput"] button p,
+    [data-testid="stNumberInput"] button span,
+    [data-testid="stNumberInput"] button svg {
+        color: var(--app-blue-700);
+        fill: var(--app-blue-700);
     }
 
     .stButton > button,
@@ -269,6 +309,11 @@ def format_number(value) -> str:
 
 def format_epsilon(value) -> str:
     return f"{float(value):.4f}"
+
+
+def inventory_weight_label(epsilon: float) -> int:
+    distances = [abs(float(epsilon) - value) for value in INVENTORY_WEIGHT_VALUES]
+    return int(np.argmin(distances))
 
 
 def display_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -726,9 +771,15 @@ def tradeoff_chart(tradeoff_df: pd.DataFrame) -> go.Figure:
         x=tradeoff_df[x_col],
         y=tradeoff_df[y_col],
         mode="lines+markers+text",
-        text=[f"eps={format_epsilon(value)}" for value in tradeoff_df["epsilon"]],
+        text=[
+            f"{int(value)}"
+            for value in tradeoff_df.get(
+                "inventory_weight",
+                tradeoff_df["epsilon"].map(inventory_weight_label),
+            )
+        ],
         textposition="top center",
-        name="Epsilon sweep",
+        name="Inventory weight sweep",
         line={"color": COLORS["purple"]},
         marker={"color": COLORS["blue"], "size": 9},
         textfont={"color": COLORS["slate"]},
@@ -751,7 +802,7 @@ def tradeoff_chart(tradeoff_df: pd.DataFrame) -> go.Figure:
 
 
 @st.cache_data(show_spinner=False)
-def load_from_paths(demand_file, capacity_file):
+def load_from_paths(demand_file, capacity_file, demand_mtime_ns: int, capacity_mtime_ns: int):
     return load_scenarios(demand_file, capacity_file)
 
 
@@ -977,33 +1028,13 @@ with st.sidebar:
     use_local_defaults = demand_upload is None and capacity_upload is None and default_pair
 
     st.header("Optimization")
-    epsilon_mode = st.segmented_control(
-        "Epsilon input",
-        ["Single value", "Sweep"],
-        default="Sweep",
-    )
     smoothing_weight = st.number_input(
         "Headcount stability weight",
         min_value=0.0,
         value=1.0,
         step=0.25,
     )
-
-    if epsilon_mode == "Single value":
-        epsilons = [
-            st.number_input(
-                "Epsilon",
-                min_value=0.000001,
-                value=0.1,
-                format="%.4f",
-            )
-        ]
-    else:
-        epsilon_text = st.text_input(
-            "Epsilons",
-            value="0.0010, 0.0100, 0.1000, 1.0000, 10.0000, 100.0000",
-        )
-        epsilons = [float(item.strip()) for item in epsilon_text.split(",") if item.strip()]
+    epsilons = INVENTORY_WEIGHT_VALUES
 
     solver = st.selectbox("Solver", ["OSQP", "CLARABEL", "SCS"])
 
@@ -1015,8 +1046,17 @@ if demand_upload is not None and capacity_upload is not None:
         f"{capacity_upload.name}_{capacity_upload.size}"
     )
 elif use_local_defaults:
-    scenario_data = load_from_paths(*default_pair)
-    data_source_key = f"default_{default_pair[0].name}_{default_pair[1].name}"
+    demand_mtime_ns = default_pair[0].stat().st_mtime_ns
+    capacity_mtime_ns = default_pair[1].stat().st_mtime_ns
+    scenario_data = load_from_paths(
+        *default_pair,
+        demand_mtime_ns,
+        capacity_mtime_ns,
+    )
+    data_source_key = (
+        f"default_{default_pair[0].name}_{demand_mtime_ns}_"
+        f"{default_pair[1].name}_{capacity_mtime_ns}"
+    )
 else:
     st.info("Upload the two CSVs from the notebook to start.")
     st.stop()
@@ -1137,13 +1177,20 @@ except Exception as exc:
     st.error(str(exc))
     st.stop()
 
-if (
-    "selected_epsilon" not in st.session_state
-    or st.session_state.selected_epsilon not in epsilons
-):
-    st.session_state.selected_epsilon = 0.1 if 0.1 in epsilons else epsilons[-1]
+tradeoff_df = tradeoff_df.copy()
+tradeoff_df.insert(
+    0,
+    "inventory_weight",
+    tradeoff_df["epsilon"].map(inventory_weight_label),
+)
 
-selected_epsilon = st.session_state.selected_epsilon
+if (
+    "selected_inventory_weight" not in st.session_state
+    or st.session_state.selected_inventory_weight not in range(len(epsilons))
+):
+    st.session_state.selected_inventory_weight = DEFAULT_INVENTORY_WEIGHT
+
+selected_epsilon = epsilons[st.session_state.selected_inventory_weight]
 result = results[selected_epsilon]
 summary = result["summary"]
 
@@ -1158,11 +1205,14 @@ with tab_overview:
         st.subheader("Inventory, demand, and build")
         st.plotly_chart(inventory_chart(summary), width="stretch")
         st.subheader("Inventory Weight")
+        st.caption(
+            "Higher inventory weight prioritizes tighter NIT adherence; lower inventory weight "
+            "allows for increased flexibility within bands."
+        )
         st.select_slider(
             "Inventory Weight",
-            options=epsilons,
-            format_func=format_epsilon,
-            key="selected_epsilon",
+            options=list(range(len(epsilons))),
+            key="selected_inventory_weight",
             label_visibility="collapsed",
         )
         st.subheader("Lead time parameters")
@@ -1251,8 +1301,8 @@ with tab_details:
         st.dataframe(display_df(result["headcount_by_site"].T), width="stretch")
 
     if len(epsilons) > 1:
-        st.subheader("Epsilon sweep")
-        st.dataframe(display_df(tradeoff_df), width="stretch")
+        st.subheader("Inventory weight sweep")
+        st.dataframe(display_df(tradeoff_df.drop(columns=["epsilon"])), width="stretch")
 
 with tab_inputs:
     st.success(f"Feasibility check passed: {feasibility_message}")
@@ -1288,7 +1338,60 @@ with tab_about:
 
         This model operates at an aggregated level and does not explicitly
         capture material constraints, multi-level BOM dependencies, or detailed
-        routing, and is therefore intended for directional planning rather than
-        executable plan generation.
+        routing, and is intended for directional planning rather than executable
+        plan generation.
+        """
+    )
+    st.subheader("Model formulation")
+    st.latex(
+        r"""
+        \begin{aligned}
+        \min_{H,p,I}\quad
+        & \omega \frac{\sum_{s \in S}\sum_{t=1}^{T}
+        (H_{s,t} - H_{s,t-1})^2}{\kappa_H}
+        + \epsilon \frac{\sum_{t=1}^{T}(I_t - \bar{I}_t)^2}{\kappa_I} \\
+        \text{s.t.}\quad
+        & P_t = \sum_{s \in S} p_{s,t} && \forall t \\
+        & A_t = \theta P_t + \delta P_{t-1} && \forall t \\
+        & I_t = I_{t-1} + A_t - D_t && \forall t \\
+        & \beta_t \bar{I}_t \le I_t \le \bar{\beta}_t \bar{I}_t && \forall t \\
+        & 0 \le H_{s,t} \le H^{max}_{s,t} && \forall s,t \\
+        & p_{s,t} = \gamma_{s,t} H_{s,t} && \forall s,t \\
+        & p_{s,t} \ge \alpha_{s,t} P_t && \forall s,t \\
+        & \theta = \frac{13-L}{13},\quad \delta = \frac{L}{13},\quad
+        \gamma_{s,t} = \frac{\text{minutes per tech}_{s,t}\cdot
+        \text{efficiency}_{s,t}}{\text{time standard}_{s,t}}
+        \end{aligned}
+        """
+    )
+    st.markdown(
+        r"""
+        **Variable and parameter glossary**
+
+        $S$ is the set of production sites, and $T$ is the planning horizon in
+        quarters. $H_{s,t}$ is headcount at site $s$ in quarter $t$, with
+        $H_{s,0}$ equal to current starting headcount. $p_{s,t}$ is started
+        production at site $s$ in quarter $t$, and $P_t$ is total started
+        production across all sites.
+
+        $I_t$ is ending finished goods inventory, $D_t$ is demand, and
+        $\bar{I}_t$ is the target net inventory level. The lower and upper
+        NIT bands are represented by $\beta_t$ and $\bar{\beta}_t$, so
+        ending inventory must remain between $\beta_t\bar{I}_t$ and
+        $\bar{\beta}_t\bar{I}_t$.
+
+        $L$ is production lead time in weeks. Since each quarter is modeled as
+        13 weeks, $\theta$ is the share of current-quarter starts that convert
+        to finished goods in the same quarter, while $\delta$ is the share
+        that remains in non-FGI pipeline and converts next quarter. $A_t$ is
+        the total finished goods production available in quarter $t$ after
+        applying that lead-time logic.
+
+        $\gamma_{s,t}$ converts headcount into production units for each site
+        and quarter. $H^{max}_{s,t}$ is maximum headcount, and $\alpha_{s,t}$
+        is the minimum production share for a site when applicable. $\omega$
+        is the headcount stability weight, $\epsilon$ is the inventory weight,
+        and $\kappa_H$ and $\kappa_I$ normalize the two objective terms so the
+        tradeoff is more robust to demand and capacity scale.
         """
     )
