@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from io import BytesIO
 from pathlib import Path
 from time import perf_counter
 
@@ -39,6 +38,7 @@ st.set_page_config(
     page_title="Rough Cut Supply Plan Optimizer",
     page_icon="",
     layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
 st.markdown(
@@ -809,12 +809,6 @@ def tradeoff_chart(tradeoff_df: pd.DataFrame) -> go.Figure:
 def load_from_paths(demand_file, capacity_file, demand_mtime_ns: int, capacity_mtime_ns: int):
     return load_scenarios(demand_file, capacity_file)
 
-
-@st.cache_data(show_spinner=False)
-def load_from_uploads(demand_bytes: bytes, capacity_bytes: bytes):
-    return load_scenarios(BytesIO(demand_bytes), BytesIO(capacity_bytes))
-
-
 def feasibility_status(
     demand_dict: dict,
     capacity_dict: dict,
@@ -1011,59 +1005,26 @@ def apply_nit_settings(demand_dict: dict, settings: pd.DataFrame) -> dict:
 
 st.title("Rough Cut Supply Plan Optimizer")
 
-with st.sidebar:
-    st.header("Data")
-    demand_upload = st.file_uploader("Demand and NIT CSV", type="csv")
-    capacity_upload = st.file_uploader("Capacity CSV", type="csv")
+epsilons = INVENTORY_WEIGHT_VALUES
+smoothing_weight = 1.0
+solver = "OSQP"
 
-    local_pairs = [
-        (DEFAULT_DEMAND_CSV, DEFAULT_CAPACITY_CSV),
-        (DEFAULT_DEMAND_CSV, FALLBACK_CAPACITY_CSV),
-        (EXAMPLE_DEMAND_CSV, EXAMPLE_CAPACITY_CSV),
-    ]
-    default_pair = next(
-        (
-            (demand_path, capacity_path)
-            for demand_path, capacity_path in local_pairs
-            if demand_path.exists() and capacity_path.exists()
-        ),
-        None,
-    )
-    use_local_defaults = demand_upload is None and capacity_upload is None and default_pair
-
-    st.header("Optimization")
-    smoothing_weight = st.number_input(
-        "Headcount stability weight",
-        min_value=0.0,
-        value=1.0,
-        step=0.25,
-    )
-    epsilons = INVENTORY_WEIGHT_VALUES
-
-    solver = st.selectbox("Solver", ["OSQP", "CLARABEL", "SCS"])
-
-
-if demand_upload is not None and capacity_upload is not None:
-    scenario_data = load_from_uploads(demand_upload.getvalue(), capacity_upload.getvalue())
-    data_source_key = (
-        f"upload_{demand_upload.name}_{demand_upload.size}_"
-        f"{capacity_upload.name}_{capacity_upload.size}"
-    )
-elif use_local_defaults:
-    demand_mtime_ns = default_pair[0].stat().st_mtime_ns
-    capacity_mtime_ns = default_pair[1].stat().st_mtime_ns
-    scenario_data = load_from_paths(
-        *default_pair,
-        demand_mtime_ns,
-        capacity_mtime_ns,
-    )
-    data_source_key = (
-        f"default_{default_pair[0].name}_{demand_mtime_ns}_"
-        f"{default_pair[1].name}_{capacity_mtime_ns}"
-    )
-else:
-    st.info("Upload the two CSVs from the notebook to start.")
+if not DEFAULT_DEMAND_CSV.exists() or not DEFAULT_CAPACITY_CSV.exists():
+    st.error("Default CSV files are missing.")
     st.stop()
+
+demand_mtime_ns = DEFAULT_DEMAND_CSV.stat().st_mtime_ns
+capacity_mtime_ns = DEFAULT_CAPACITY_CSV.stat().st_mtime_ns
+scenario_data = load_from_paths(
+    DEFAULT_DEMAND_CSV,
+    DEFAULT_CAPACITY_CSV,
+    demand_mtime_ns,
+    capacity_mtime_ns,
+)
+data_source_key = (
+    f"default_{DEFAULT_DEMAND_CSV.name}_{demand_mtime_ns}_"
+    f"{DEFAULT_CAPACITY_CSV.name}_{capacity_mtime_ns}"
+)
 
 demand_names = list(scenario_data.demand_scenarios)
 capacity_names = list(scenario_data.capacity_scenarios)
@@ -1289,10 +1250,18 @@ with tab_about:
         planning, they are not ideal for exploring high-level strategic
         tradeoffs due to their computational complexity and long runtimes.
 
-        This model is intended to work in tandem with these systems: it can pull
-        demand, inventory, and capacity inputs, aggregate them, allow for
-        targeted overrides, and generate a range of viable scenarios while
-        quantifying tradeoffs. The resulting outputs can be used to select
+        The inventory weight control exposes this tradeoff directly. The tool
+        solves the same scenario across a fixed range of inventory weights,
+        where lower values allow more flexibility within inventory bands and
+        higher values prioritize tighter adherence to the NIT target. Because
+        each solve runs nearly instantaneously, users can move between these
+        alternatives and immediately see how inventory attainment, production
+        timing, and labor stability change.
+
+        This model is intended to work in tandem with advanced planning systems:
+        it can pull demand, inventory, and capacity inputs, aggregate them,
+        allow for targeted overrides, and generate a range of viable scenarios
+        while quantifying tradeoffs. The resulting outputs can be used to select
         directional plans and define inputs to feed back into full planning
         models, reducing the need for time-intensive iterative runs of the
         network solver during early-stage planning.
