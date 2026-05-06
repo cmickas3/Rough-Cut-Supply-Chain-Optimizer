@@ -13,7 +13,7 @@ steady_growth,Q4,245,10,0.85,1.15,
 steady_growth,Q5,260,10,0.85,1.15,
 steady_growth,Q6,275,10,0.85,1.15,
 ,,,,,,
-front_loaded_spike,Q1,310,10,0.85,1.15,180
+front_loaded_spike,Q1,310,10,0.85,1.15,250
 front_loaded_spike,Q2,295,10,0.85,1.15,
 front_loaded_spike,Q3,250,10,0.85,1.15,
 front_loaded_spike,Q4,225,10,0.85,1.15,
