@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from io import BytesIO
 from pathlib import Path
 from time import perf_counter
@@ -307,6 +306,16 @@ def format_number(value) -> str:
     return f"{number:,.1f}"
 
 
+def format_integer(value) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return value
+    if pd.isna(number):
+        return ""
+    return f"{number:,.0f}"
+
+
 def format_epsilon(value) -> str:
     return f"{float(value):.4f}"
 
@@ -323,6 +332,13 @@ def display_df(df: pd.DataFrame) -> pd.DataFrame:
             formatted[column] = formatted[column].map(format_epsilon)
         else:
             formatted[column] = formatted[column].map(format_number)
+    return formatted
+
+
+def display_integer_df(df: pd.DataFrame) -> pd.DataFrame:
+    formatted = df.copy()
+    for column in formatted.select_dtypes(include="number").columns:
+        formatted[column] = formatted[column].map(format_integer)
     return formatted
 
 
@@ -461,18 +477,6 @@ def editable_capacity_inputs(capacity_dict: dict, key: str) -> pd.DataFrame:
     )
     st.session_state[capacity_key] = capacity_table.sort_values(["site", "metric"])
     return capacity_table
-
-
-def saved_store_key(data_source_key: str) -> str:
-    return f"saved_scenarios_{data_source_key}"
-
-
-def saved_label(name: str) -> str:
-    return f"Saved: {name}"
-
-
-def base_label(name: str) -> str:
-    return name.removeprefix("Saved: ")
 
 
 def apply_demand_inputs(demand_dict: dict, demand_table: pd.DataFrame) -> dict:
@@ -1063,28 +1067,15 @@ else:
 
 demand_names = list(scenario_data.demand_scenarios)
 capacity_names = list(scenario_data.capacity_scenarios)
-store_key = saved_store_key(data_source_key)
-if store_key not in st.session_state:
-    st.session_state[store_key] = {}
-saved_message_key = f"{store_key}_message"
-saved_names = list(st.session_state[store_key])
-saved_options = [saved_label(name) for name in saved_names]
 
 selector_cols = st.columns(2)
 with selector_cols[0]:
-    demand_name = st.selectbox("Demand scenario", demand_names + saved_options)
+    demand_name = st.selectbox("Demand scenario", demand_names)
 with selector_cols[1]:
-    capacity_name = st.selectbox("Capacity scenario", capacity_names + saved_options)
+    capacity_name = st.selectbox("Capacity scenario", capacity_names)
 
-if demand_name.startswith("Saved: "):
-    demand_dict = deepcopy(st.session_state[store_key][base_label(demand_name)]["demand"])
-else:
-    demand_dict = scenario_data.demand_scenarios[demand_name]
-
-if capacity_name.startswith("Saved: "):
-    capacity_dict = deepcopy(st.session_state[store_key][base_label(capacity_name)]["capacity"])
-else:
-    capacity_dict = scenario_data.capacity_scenarios[capacity_name]
+demand_dict = scenario_data.demand_scenarios[demand_name]
+capacity_dict = scenario_data.capacity_scenarios[capacity_name]
 input_key = scenario_context_key(f"{data_source_key}_{demand_name}", capacity_name)
 
 tab_overview, tab_details, tab_inputs, tab_about = st.tabs(
@@ -1092,8 +1083,6 @@ tab_overview, tab_details, tab_inputs, tab_about = st.tabs(
 )
 
 with tab_inputs:
-    if saved_message_key in st.session_state:
-        st.success(st.session_state.pop(saved_message_key))
     demand_inputs = editable_demand_inputs(demand_dict, input_key)
 
 demand_dict = apply_demand_inputs(demand_dict, demand_inputs)
@@ -1112,31 +1101,6 @@ with tab_inputs:
     capacity_inputs = editable_capacity_inputs(capacity_dict, input_key)
 
 capacity_dict = apply_capacity_inputs(capacity_dict, capacity_inputs)
-
-with tab_inputs:
-    st.subheader("Save edited scenario")
-    save_cols = st.columns([2.2, 1])
-    with save_cols[0]:
-        new_scenario_name = st.text_input(
-            "New scenario name",
-            value=f"{base_label(demand_name)} edited",
-            key=f"save_name_{input_key}",
-        )
-    with save_cols[1]:
-        save_clicked = st.button("Save as new option", key=f"save_button_{input_key}")
-    if save_clicked:
-        clean_name = new_scenario_name.strip()
-        if not clean_name:
-            st.warning("Enter a scenario name before saving.")
-        else:
-            st.session_state[store_key][clean_name] = {
-                "demand": deepcopy(demand_dict),
-                "capacity": deepcopy(capacity_dict),
-            }
-            st.session_state[saved_message_key] = (
-                f"Saved scenario: {clean_name}. It is now available in the scenario dropdowns."
-            )
-            st.rerun()
 
 if "lead_time_weeks" not in st.session_state:
     st.session_state.lead_time_weeks = 3
@@ -1243,7 +1207,7 @@ with tab_overview:
         st.subheader("Headcount by site")
         st.plotly_chart(headcount_chart(result, capacity_dict), width="stretch")
         st.subheader("Production by site")
-        st.dataframe(display_df(result["production_by_site"].T), width="stretch")
+        st.dataframe(display_integer_df(result["production_by_site"].T), width="stretch")
 
     if len(epsilons) > 1:
         st.subheader("Stability vs NIT tradeoff")
@@ -1295,7 +1259,7 @@ with tab_details:
     table_cols = st.columns(2)
     with table_cols[0]:
         st.subheader("Production by site")
-        st.dataframe(display_df(result["production_by_site"].T), width="stretch")
+        st.dataframe(display_integer_df(result["production_by_site"].T), width="stretch")
     with table_cols[1]:
         st.subheader("Headcount by site")
         st.dataframe(display_df(result["headcount_by_site"].T), width="stretch")
