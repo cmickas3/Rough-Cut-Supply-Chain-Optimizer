@@ -1,0 +1,25 @@
+scenario,quarter,site,minutes per tech,max number of techs,min_share,efficiency,time standard,current HC
+low_volume_seasonal,Q1,Site_A,30000,20,0,60%,1200,16
+low_volume_seasonal,Q1,Site_B,30000,0,0,60%,1200,0
+low_volume_seasonal,Q1,Site_C,30000,0,0,60%,1200,0
+low_volume_seasonal,Q2,Site_A,30000,20,0,60%,1200,
+low_volume_seasonal,Q2,Site_B,30000,0,0,60%,1200,
+low_volume_seasonal,Q2,Site_C,30000,0,0,60%,1200,
+low_volume_seasonal,Q3,Site_A,30000,20,0,70%,1200,
+low_volume_seasonal,Q3,Site_B,30000,10,0,70%,1200,
+low_volume_seasonal,Q3,Site_C,30000,0,0,70%,1200,
+low_volume_seasonal,Q4,Site_A,30000,10,0,70%,1200,
+low_volume_seasonal,Q4,Site_B,30000,10,0,70%,1200,
+low_volume_seasonal,Q4,Site_C,30000,10,0,70%,1200,
+low_volume_seasonal,Q5,Site_A,30000,10,0,70%,1200,
+low_volume_seasonal,Q5,Site_B,30000,20,0,70%,1200,
+low_volume_seasonal,Q5,Site_C,30000,10,0,70%,1200,
+low_volume_seasonal,Q6,Site_A,30000,10,0,70%,1200,
+low_volume_seasonal,Q6,Site_B,30000,20,0.2,70%,1200,
+low_volume_seasonal,Q6,Site_C,30000,10,0.3,70%,1200,
+single_site,Q1,Site_A,30000,20,0,60%,1200,
+single_site,Q2,Site_A,30000,20,0,60%,1200,
+single_site,Q3,Site_A,30000,30,0,60%,1200,
+single_site,Q4,Site_A,30000,30,0,60%,1200,
+single_site,Q5,Site_A,30000,30,0,60%,1200,
+single_site,Q6,Site_A,30000,30,0,60%,1200,
