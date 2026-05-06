@@ -15,9 +15,6 @@ from supply_optimizer import solve_supply_plan_hc_stability
 WORKSPACE = Path(__file__).parent
 DEFAULT_DEMAND_CSV = WORKSPACE / "Project Mock Data - Demand and NIT (2).csv"
 DEFAULT_CAPACITY_CSV = WORKSPACE / "Project Mock Data - Capacity (8).csv"
-FALLBACK_CAPACITY_CSV = WORKSPACE / "Project Mock Data - Capacity (7).csv"
-EXAMPLE_DEMAND_CSV = WORKSPACE / "Project Mock Data - Demand and NIT (1).csv"
-EXAMPLE_CAPACITY_CSV = WORKSPACE / "Project Mock Data - Capacity (3).csv"
 
 COLORS = {
     "blue": "#5B8DEF",
@@ -1028,12 +1025,26 @@ data_source_key = (
 
 demand_names = list(scenario_data.demand_scenarios)
 capacity_names = list(scenario_data.capacity_scenarios)
+default_demand_index = (
+    demand_names.index("seasonal_peak_q4") if "seasonal_peak_q4" in demand_names else 0
+)
+default_capacity_index = (
+    capacity_names.index("two_site") if "two_site" in capacity_names else 0
+)
 
 selector_cols = st.columns(2)
 with selector_cols[0]:
-    demand_name = st.selectbox("Demand scenario", demand_names)
+    demand_name = st.selectbox(
+        "Demand scenario",
+        demand_names,
+        index=default_demand_index,
+    )
 with selector_cols[1]:
-    capacity_name = st.selectbox("Capacity scenario", capacity_names)
+    capacity_name = st.selectbox(
+        "Capacity scenario",
+        capacity_names,
+        index=default_capacity_index,
+    )
 
 demand_dict = scenario_data.demand_scenarios[demand_name]
 capacity_dict = scenario_data.capacity_scenarios[capacity_name]
